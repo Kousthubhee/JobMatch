@@ -1,12 +1,18 @@
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-
-GlobalWorkerOptions.workerSrc = workerUrl;
-
-/** Extract structured plain text from an uploaded resume PDF. */
+/**
+ * PDF text extraction via pdfjs-dist.
+ *
+ * The worker bundle is attached to the global scope and pdf.js runs its
+ * built-in main-thread fallback ("fake worker"). This avoids the
+ * `?url` asset import, which doesn't survive every dev-server / preview
+ * proxy setup — parsing works identically in dev, preview, and prod.
+ */
 export async function extractPdfText(file: File): Promise<string> {
+  const pdfjs = await import("pdfjs-dist");
+  const worker = await import("pdfjs-dist/build/pdf.worker.min.mjs");
+  (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker = worker;
+
   const buf = await file.arrayBuffer();
-  const doc = await getDocument({ data: buf }).promise;
+  const doc = await pdfjs.getDocument({ data: buf }).promise;
   const parts: string[] = [];
   for (let p = 1; p <= doc.numPages; p++) {
     const page = await doc.getPage(p);
@@ -21,7 +27,7 @@ export async function extractPdfText(file: File): Promise<string> {
         line = "";
       }
       line += str;
-      if (str.length > 0) line += " ";
+      if (str.endsWith(" ") === false && str.length > 0) line += " ";
       lastY = y;
     }
     if (line.trim()) parts.push(line.trimEnd());
